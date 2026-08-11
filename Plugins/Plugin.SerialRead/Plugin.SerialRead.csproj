@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net9.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWPF>true</UseWPF>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!-- 输出到 LYCorePro 的 Plugins 目录，方便调试 -->
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+		<!-- 使用 MSBuild 属性构建路径 -->
+		<OutputPath>$(MSBuildProjectDirectory)\..\..\LYCorePro\bin\Debug\Plugins\</OutputPath>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="EPPlus" Version="4.5.3.3" />
+		<PackageReference Include="System.IO.Ports" Version="10.0.10" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\LYCorePro\LYCorePro.csproj" />
+		<ProjectReference Include="..\..\PluginBase\PluginBase.csproj" />
+	</ItemGroup>
+
+</Project>

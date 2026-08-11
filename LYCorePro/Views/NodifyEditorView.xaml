@@ -1,0 +1,380 @@
+<UserControl x:Class="LYCorePro.Views.NodifyEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:nodify="clr-namespace:Nodify;assembly=Nodify"
+             xmlns:core="clr-namespace:LYCorePro.Core"
+             xmlns:shared="clr-namespace:Nodify;assembly=Nodify.Shared"
+             xmlns:converters="clr-namespace:LYCorePro.Converters"
+             x:Name="NodifyEditorControl"
+             AllowDrop="True">
+
+    <UserControl.Resources>
+        <converters:DataTypeColorConverter x:Key="DataTypeColorConverter"/>
+        <converters:DataTypeBrushConverter x:Key="DataTypeBrushConverter"/>
+
+        <GeometryDrawing x:Key="SmallGridGeometry"
+                         Geometry="M0,0 L0,1 0.03,1 0.03,0.03 1,0.03 1,0 Z"
+                         Brush="{StaticResource GridLinesBrush}" />
+
+        <DrawingBrush x:Key="SmallGridLinesDrawingBrush"
+                      TileMode="Tile"
+                      ViewportUnits="Absolute"
+                      Viewport="0 0 15 15"
+                      Transform="{Binding ViewportTransform, ElementName=Editor}"
+                      Drawing="{StaticResource SmallGridGeometry}" />
+
+        <!-- 输入连接点模板 -->
+        <DataTemplate x:Key="InputConnectorTemplate" DataType="{x:Type core:ConnectorViewModel}">
+            <nodify:NodeInput Anchor="{Binding Anchor, Mode=OneWayToSource}"
+                              Header="{Binding Title}"
+                              IsConnected="{Binding IsConnected}"
+                              Margin="0,0,4,0"
+                              VerticalAlignment="Center" 
+                              BorderBrush="{Binding DataType, Converter={StaticResource DataTypeBrushConverter}, ConverterParameter=Connection}"/>
+        </DataTemplate>
+
+        <!-- 输出连接点模板 -->
+        <DataTemplate x:Key="OutputConnectorTemplate" DataType="{x:Type core:ConnectorViewModel}">
+            <nodify:NodeOutput Anchor="{Binding Anchor, Mode=OneWayToSource}"
+                               Header="{Binding Title}"
+                               IsConnected="{Binding IsConnected}"
+                               Margin="4,0,0,0"
+                               VerticalAlignment="Center"
+                                BorderBrush="{Binding DataType, Converter={StaticResource DataTypeBrushConverter}, ConverterParameter=Connection}"/>
+        </DataTemplate>
+
+        <!-- 连接线模板 -->
+        <DataTemplate x:Key="ConnectionTemplate" DataType="{x:Type core:ConnectionViewModel}">
+            <Grid>
+                <!-- 轮廓层：默认透明，选中时显示（线段原色）更改为曲线LineConnection ->  Connection-->
+                <nodify:Connection x:Name="OutlineLayer"
+                                       Source="{Binding Output.Anchor}"
+                                       Target="{Binding Input.Anchor}"
+                                       StrokeThickness="5"
+                                       Stroke="{Binding DataType, Converter={StaticResource DataTypeBrushConverter}, ConverterParameter=Connection}"
+                                       Cursor="Hand">
+                    <nodify:Connection.Style>
+                        <Style TargetType="nodify:Connection">
+                            <EventSetter Event="MouseLeftButtonDown" Handler="OnConnectionMouseLeftButtonDown"/>
+                            <Setter Property="Opacity" Value="0"/>
+                        </Style>
+                    </nodify:Connection.Style>
+                </nodify:Connection>
+                <!-- 内层线段：默认显示，选中时透明露出轮廓 -->
+                <nodify:Connection x:Name="InnerLayer"
+                                       Source="{Binding Output.Anchor}"
+                                       Target="{Binding Input.Anchor}"
+                                       StrokeThickness="3"
+                                       Stroke="{Binding DataType, Converter={StaticResource DataTypeBrushConverter}, ConverterParameter=Connection}"
+                                       Cursor="Hand">
+                    <nodify:Connection.Style>
+                        <Style TargetType="nodify:Connection">
+                            <EventSetter Event="MouseLeftButtonDown" Handler="OnConnectionMouseLeftButtonDown"/>
+                            <Setter Property="Opacity" Value="1"/>
+                        </Style>
+                    </nodify:Connection.Style>
+                </nodify:Connection>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="OutlineLayer" Property="Opacity" Value="1"/>
+                    <Setter TargetName="InnerLayer" Property="Opacity" Value="0"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 待处理连接模板 -->
+        <DataTemplate x:Key="PendingConnectionTemplate" DataType="{x:Type core:PendingConnectionViewModel}">
+            <nodify:PendingConnection IsVisible="{Binding IsVisible}"
+                                      Source="{Binding Source, Mode=OneWayToSource}"
+                                      Target="{Binding Target, Mode=OneWayToSource}"
+                                      TargetAnchor="{Binding TargetLocation, Mode=OneWayToSource}"
+                                      Stroke="{Binding ConnectionStroke}"
+                                      StrokeThickness="2"
+                                      StrokeDashArray="4,4"
+                                      StartedCommand="{Binding StartConnectionCommand}"
+                                      CompletedCommand="{Binding CompleteConnectionCommand}"/>
+        </DataTemplate>
+
+        <!-- 操作节点模板 -->
+        <DataTemplate DataType="{x:Type core:OperationNodeViewModel}">
+            <nodify:Node Input="{Binding Inputs}"
+                         InputConnectorTemplate="{StaticResource InputConnectorTemplate}"
+                         Output="{Binding Outputs}"
+                         OutputConnectorTemplate="{StaticResource OutputConnectorTemplate}"
+                         BorderBrush="#4A90D9"
+                         BorderThickness="2"
+                         MinWidth="160"
+                         MinHeight="60">
+                <nodify:Node.Header>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="0" Width="14" Height="14"
+                              Data="{Binding IconData}" Fill="#FF007ACC"
+                              Stretch="Uniform" Margin="6,0,4,0"
+                              VerticalAlignment="Center"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Title}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   FontSize="13" FontWeight="SemiBold"/>
+                        <Button Grid.Column="2" Width="24" Height="24"
+                                Margin="0,0,6,0" VerticalAlignment="Center"
+                                ToolTip="执行"
+                                Command="{Binding DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=nodify:NodifyEditor}}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding IsEnabled}"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand">
+                            <Path Width="12" Height="12"
+                                  Data="M0,0 L10,5 L0,10 Z"
+                                  Fill="#4A90D9" Stretch="Uniform"/>
+                        </Button>
+                    </Grid>
+                </nodify:Node.Header>
+                <nodify:Node.ContentTemplate>
+                    <DataTemplate>
+                        <ContentPresenter Content="{Binding Instance}" />
+                    </DataTemplate>
+                </nodify:Node.ContentTemplate>
+                <nodify:Node.Style>
+                    <Style TargetType="nodify:Node" BasedOn="{StaticResource {x:Type nodify:Node}}">
+                        <Setter Property="BorderBrush" Value="#4A90D9"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                <Setter Property="BorderBrush" Value="#FFA500"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="BorderBrush" Value="#FF6B00"/>
+                                <Setter Property="BorderThickness" Value="3"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </nodify:Node.Style>
+            </nodify:Node>
+        </DataTemplate>
+
+        <!-- ItemContainerStyle -->
+        <Style x:Key="NodeContainerStyle" TargetType="nodify:ItemContainer">
+            <Setter Property="Location" Value="{Binding Location}"/>
+            <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}"/>
+            <Setter Property="ActualSize" Value="{Binding Size, Mode=OneWayToSource}"/>
+            <Setter Property="Panel.ZIndex" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="nodify:ItemContainer">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ContentPresenter Grid.Row="0"/>
+                            <Border x:Name="SelectionBorder" Grid.Row="0"
+                                    BorderBrush="#FF6B00" BorderThickness="3"
+                                    CornerRadius="4" Background="Transparent"
+                                    IsHitTestVisible="False" Visibility="Collapsed"/>
+                            <Border x:Name="DisabledBanner" Grid.Row="1"
+                                    Height="22" MinWidth="160"
+                                    CornerRadius="0,0,4,4" Visibility="Visible">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Background" Value="#FFE6A800"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RunStatus}" Value="Running">
+                                                <Setter Property="Background" Value="#4A90D9"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RunStatus}" Value="Completed">
+                                                <Setter Property="Background" Value="#4CAF50"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RunStatus}" Value="Error">
+                                                <Setter Property="Background" Value="#DC3535"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding RunStatus}" Value="Disabled">
+                                                <Setter Property="Background" Value="#FFE6A800"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Text="{Binding BannerText}"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontSize="11" FontWeight="Bold"
+                                           Foreground="White"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="SelectionBorder" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding BannerText}" Value="{x:Null}">
+                                <Setter TargetName="DisabledBanner" Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Panel.ZIndex" Value="2"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="nodify:NodeInput" BasedOn="{StaticResource {x:Type nodify:NodeInput}}">
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style TargetType="nodify:NodeOutput" BasedOn="{StaticResource {x:Type nodify:NodeOutput}}">
+            <Setter Property="Margin" Value="4,0,0,0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ==================== 插件参数面板 DataTemplate ==================== -->
+        <!-- 插件通过 GetTemplate() 将 DataTemplate 注册到 Application.Current.Resources -->
+        <!-- ContentControl 根据 SelectedOperationInstance 的类型自动匹配对应的 DataTemplate -->
+
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <nodify:NodifyEditor x:Name="Editor"
+                             Grid.Column="0"
+                             Background="{StaticResource SmallGridLinesDrawingBrush}"
+                             DataContext="{Binding DataContext, ElementName=NodifyEditorControl}"
+                             ItemsSource="{Binding Operations, ElementName=NodifyEditorControl}"
+                             ItemContainerStyle="{StaticResource NodeContainerStyle}"
+                             Connections="{Binding Connections, ElementName=NodifyEditorControl}"
+                             PendingConnection="{Binding PendingConnection, ElementName=NodifyEditorControl}"
+                             PendingConnectionTemplate="{StaticResource PendingConnectionTemplate}"
+                             ConnectionTemplate="{StaticResource ConnectionTemplate}"
+                             ViewportZoom="{Binding Zoom, ElementName=NodifyEditorControl}"
+                             ViewportLocation="{Binding ViewportLocation, ElementName=NodifyEditorControl}"
+                             SelectedItems="{Binding SelectedOperations, ElementName=NodifyEditorControl}"
+                             DisconnectConnectorCommand="{Binding DisconnectConnectorCommand, ElementName=NodifyEditorControl}"
+                             GridCellSize="15"
+                             AllowDrop="True"
+                             Drop="OnDrop"
+                             DragEnter="OnDragEnter"
+                             DragOver="OnDragOver"
+                             HasCustomContextMenu="{Binding HasCustomContextMenu, ElementName=NodifyEditorControl}">
+
+            <nodify:NodifyEditor.InputBindings>
+                <KeyBinding Key="Delete" Command="{Binding DeleteSelectionCommand, ElementName=NodifyEditorControl}"/>
+                <KeyBinding Key="C" Modifiers="Ctrl" Command="{Binding CopyCommand, ElementName=NodifyEditorControl}"/>
+                <KeyBinding Key="V" Modifiers="Ctrl" Command="{Binding PasteCommand, ElementName=NodifyEditorControl}"/>
+            </nodify:NodifyEditor.InputBindings>
+
+            <nodify:NodifyEditor.ContextMenu>
+                <ContextMenu x:Name="EditorContextMenu">
+                    <MenuItem x:Name="MenuItemFitView" Header="自适应视图" Click="OnFitViewClick"/>
+                    <Separator x:Name="SeparatorEmpty"/>
+                    <MenuItem x:Name="MenuItemExecute" Header="执行"
+                              Command="{Binding PlacementTarget.DataContext.ExecuteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem x:Name="MenuItemExpandSub" Header="展开"
+                              Command="{Binding PlacementTarget.DataContext.ExpandSubEditorCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem x:Name="MenuItemNavigateBack" Header="返回上一级"
+                              Command="{Binding PlacementTarget.DataContext.NavigateBackCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              InputGestureText="Esc"/>
+                    <MenuItem x:Name="MenuItemRename" Header="重命名"
+                              Command="{Binding PlacementTarget.DataContext.RenameCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              InputGestureText="F2"/>
+                    <MenuItem x:Name="MenuItemDisable" Header="禁用"
+                              Command="{Binding PlacementTarget.DataContext.DisableCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem x:Name="MenuItemEnable" Header="启用"
+                              Command="{Binding PlacementTarget.DataContext.EnableCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <Separator x:Name="SeparatorNode"/>
+                    <MenuItem x:Name="MenuItemCopy" Header="复制"
+                              Command="{Binding PlacementTarget.DataContext.CopyCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              InputGestureText="Ctrl+C"/>
+                    <MenuItem x:Name="MenuItemPaste" Header="粘贴"
+                              Command="{Binding PlacementTarget.DataContext.PasteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              InputGestureText="Ctrl+V"/>
+                    <Separator x:Name="SeparatorDelete"/>
+                    <MenuItem x:Name="MenuItemDelete" Header="删除"
+                              Command="{Binding PlacementTarget.DataContext.DeleteSelectionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              InputGestureText="Delete"/>
+                </ContextMenu>
+            </nodify:NodifyEditor.ContextMenu>
+        </nodify:NodifyEditor>
+
+        <!-- 右侧参数设定面板 -->
+        <Border x:Name="SettingsPanel"
+                Grid.Column="1"
+                Width="450"
+                Background="#1E1E2E"
+                BorderBrush="#3A3A5C"
+                BorderThickness="1,0,0,0"
+                Visibility="Collapsed">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="12">
+                    <!-- 面板标题 -->
+                    <TextBlock Text="{Binding ElementName=NodifyEditorControl, Path=SettingsPanelTitle}"
+                               FontSize="14" FontWeight="Bold"
+                               Foreground="#CDD6F4"
+                               Margin="0,0,0,12"/>
+
+                    <!-- 通用设置内容区：根据 Instance 类型自动匹配 DataTemplate -->
+                    <ContentControl x:Name="SettingsContent"
+                                    Content="{Binding ElementName=NodifyEditorControl, Path=SelectedOperationInstance}"
+                                    Focusable="False"/>
+
+                    <!-- 连线 Order 编辑区（选中连线时显示） -->
+                    <StackPanel x:Name="ConnectionOrderPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                        <Separator Background="#3A3A5C" Margin="0,0,0,10"/>
+                        <TextBlock Text="执行顺序" FontSize="12" FontWeight="Bold"
+                                   Foreground="#CDD6F4" Margin="0,0,0,8"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="#" FontSize="12"
+                                       Foreground="#A6ADC8" VerticalAlignment="Center"
+                                       Margin="0,0,4,0"/>
+                            <TextBox Grid.Column="1" FontSize="12" FontWeight="Bold"
+                                     Foreground="#F9E2AF" VerticalAlignment="Center"
+                                     Height="24" Background="#313244" BorderBrush="#45475A"
+                                     TextAlignment="Center"
+                                     Text="{Binding ElementName=NodifyEditorControl, Path=DataContext.SelectedConnection.Order, UpdateSourceTrigger=PropertyChanged}"/>
+                            <Button Grid.Column="2" Width="26" Height="26"
+                                    ToolTip="上移（优先执行）"
+                                    Background="#3A3A5C" BorderBrush="#4A90D9"
+                                    Foreground="#CDD6F4" FontSize="14" FontWeight="Bold"
+                                    Cursor="Hand" Margin="4,0,4,0"
+                                    Command="{Binding ElementName=NodifyEditorControl, Path=DataContext.IncreaseOrderCommand}">
+                                <TextBlock Text="▲" FontSize="10"/>
+                            </Button>
+                            <Button Grid.Column="3" Width="26" Height="26"
+                                    ToolTip="下移（延后执行）"
+                                    Background="#3A3A5C" BorderBrush="#4A90D9"
+                                    Foreground="#CDD6F4" FontSize="14" FontWeight="Bold"
+                                    Cursor="Hand" Margin="0,0,4,0"
+                                    Command="{Binding ElementName=NodifyEditorControl, Path=DataContext.DecreaseOrderCommand}">
+                                <TextBlock Text="▼" FontSize="10"/>
+                            </Button>
+                            <Button Grid.Column="4" Width="36" Height="26"
+                                    ToolTip="设为并列（与上一条连线同时执行）"
+                                    Background="#45475A" BorderBrush="#F9E2AF"
+                                    Foreground="#F9E2AF" FontSize="10" FontWeight="Bold"
+                                    Cursor="Hand"
+                                    Command="{Binding ElementName=NodifyEditorControl, Path=DataContext.SetParallelCommand}">
+                                <TextBlock Text="并列"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>
